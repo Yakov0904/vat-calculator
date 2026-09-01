@@ -130,20 +130,52 @@ def parse_amount(value):
 
 
 def copy_button(text, key):
-    safe = text.replace("\\", "\\\\").replace("'", "\\'")
+    import base64
+
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+
     components.html(
         f"""
-        <button onclick="navigator.clipboard.writeText('{safe}');
-        this.innerHTML='✅ Скопировано';"
+        <html>
+        <body style="margin:0;">
+        <button id="copy_{key}"
         style="
-        padding:10px 18px;
-        border-radius:10px;
-        border:1px solid #999;
-        cursor:pointer;">
+        width:130px;
+        height:38px;
+        padding:5px 10px;
+        border-radius:8px;
+        border:1px solid #888;
+        background:white;
+        cursor:pointer;
+        font-size:14px;">
         📋 Копировать
         </button>
+
+        <script>
+        const btn = document.getElementById("copy_{key}");
+
+        btn.onclick = async function() {{
+            const text = decodeURIComponent(escape(atob("{encoded}")));
+
+            try {{
+                await navigator.clipboard.writeText(text);
+            }} catch(e) {{
+                const area = document.createElement("textarea");
+                area.value = text;
+                document.body.appendChild(area);
+                area.select();
+                document.execCommand("copy");
+                area.remove();
+            }}
+
+            btn.innerHTML = "✅ Скопировано";
+            setTimeout(() => btn.innerHTML="📋 Копировать", 1500);
+        }};
+        </script>
+        </body>
+        </html>
         """,
-        height=45
+        height=45,
     )
 
 
