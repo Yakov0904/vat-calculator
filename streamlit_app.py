@@ -1,7 +1,7 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from decimal import Decimal, ROUND_HALF_UP
 import re
-import html
 
 st.set_page_config(
     page_title="Калькулятор НДС Онлайн",
@@ -9,30 +9,31 @@ st.set_page_config(
     layout="centered"
 )
 
+# ---------- СТИЛЬ ----------
 st.markdown("""
 <style>
-.main {
-    max-width: 900px;
-}
 .block-container {
+    max-width: 900px;
     padding-top: 2rem;
 }
+h1 {
+    text-align: center;
+}
 .card {
-    padding: 20px;
-    border-radius: 15px;
-    border: 1px solid #ddd;
-    margin-bottom: 15px;
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid #dddddd;
+    margin: 10px 0;
 }
-.result-title {
-    font-size: 20px;
-    font-weight: 700;
-}
-.big-number {
-    font-size: 28px;
-    font-weight: 700;
+.result {
+    font-size: 18px;
+    line-height: 1.5;
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ---------- ЛОГИКА ----------
 
 UNITS_MALE = ["", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]
 UNITS_FEMALE = ["", "одна", "две", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]
@@ -66,24 +67,22 @@ def plural_form(n, forms):
 
 
 def triad_to_words(n, female=False):
-    if n == 0:
-        return ""
-    result = []
+    words = []
     h = n // 100
     rest = n % 100
 
     if h:
-        result.append(HUNDREDS[h])
+        words.append(HUNDREDS[h])
 
     if 10 <= rest <= 19:
-        result.append(TEENS[rest - 10])
+        words.append(TEENS[rest - 10])
     else:
         if rest // 10:
-            result.append(TENS[rest // 10])
+            words.append(TENS[rest // 10])
         if rest % 10:
-            result.append((UNITS_FEMALE if female else UNITS_MALE)[rest % 10])
+            words.append((UNITS_FEMALE if female else UNITS_MALE)[rest % 10])
 
-    return " ".join(result)
+    return " ".join(words)
 
 
 def integer_to_words(n):
@@ -97,10 +96,10 @@ def integer_to_words(n):
         triad = n % 1000
         if triad:
             one, few, many, female = SCALES[index]
-            text = triad_to_words(triad, female)
+            txt = triad_to_words(triad, female)
             if index:
-                text += " " + plural_form(triad, (one, few, many))
-            parts.append(text)
+                txt += " " + plural_form(triad, (one, few, many))
+            parts.append(txt)
 
         n //= 1000
         index += 1
@@ -110,27 +109,48 @@ def integer_to_words(n):
 
 def money_to_text(amount):
     amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    rubles = int(amount)
-    kopecks = int((amount - Decimal(rubles)) * 100)
+
+    rub = int(amount)
+    kop = int((amount - Decimal(rub)) * 100)
 
     return (
-        f"{rubles:,}".replace(",", " ")
-        + f" ({integer_to_words(rubles).capitalize()}) "
-        + plural_form(rubles, ("рубль", "рубля", "рублей"))
-        + f" {kopecks:02d} "
-        + plural_form(kopecks, ("копейка", "копейки", "копеек"))
+        f"{rub:,}".replace(",", " ")
+        + f" ({integer_to_words(rub).capitalize()}) "
+        + plural_form(rub, ("рубль", "рубля", "рублей"))
+        + f" {kop:02d} "
+        + plural_form(kop, ("копейка", "копейки", "копеек"))
     )
 
 
 def parse_amount(value):
-    value = value.replace(" ", "").replace("\u00A0", "").replace(",", ".")
+    value = value.replace(" ", "").replace(",", ".")
     if not re.fullmatch(r"\d+(\.\d+)?", value):
         raise ValueError
     return Decimal(value)
 
 
+def copy_button(text, key):
+    safe = text.replace("\\", "\\\\").replace("'", "\\'")
+    components.html(
+        f"""
+        <button onclick="navigator.clipboard.writeText('{safe}');
+        this.innerHTML='✅ Скопировано';"
+        style="
+        padding:10px 18px;
+        border-radius:10px;
+        border:1px solid #999;
+        cursor:pointer;">
+        📋 Копировать
+        </button>
+        """,
+        height=45
+    )
+
+
+# ---------- ИНТЕРФЕЙС ----------
+
 st.title("💰 Калькулятор НДС Онлайн")
-st.caption("Бесплатный сервис расчёта НДС с выводом суммы прописью")
+st.caption("Бесплатный сервис расчёта НДС с суммой прописью")
 
 amount_input = st.text_input(
     "Введите сумму",
@@ -139,10 +159,7 @@ amount_input = st.text_input(
 
 mode = st.radio(
     "Режим расчёта",
-    [
-        "Начислить НДС сверху",
-        "Выделить НДС из суммы"
-    ],
+    ["Начислить НДС", "Выделить НДС из суммы"],
     horizontal=True
 )
 
@@ -156,50 +173,33 @@ if st.button("🧮 Рассчитать", use_container_width=True):
 
     amount = amount.quantize(Decimal("0.01"))
 
-    full_text = f"Исходная сумма:\n{amount_input}\n{money_to_text(amount)}"
+    source = f"Исходная сумма:\n{amount_input}\n{money_to_text(amount)}"
 
-    st.markdown("## 📄 Исходная сумма")
+    st.subheader("📄 Исходная сумма")
+    st.text_area(" ", source, height=90)
+    copy_button(source, "source")
 
-    st.text_area(
-        "Результат",
-        full_text,
-        height=90
-    )
+    st.subheader("📊 Результаты")
 
-    st.download_button(
-        "📋 Скачать текст",
-        full_text,
-        file_name="nds_result.txt",
-        use_container_width=True
-    )
+    total = [source]
 
-    st.markdown("## 📊 Расчёт НДС")
-
-    all_results = [full_text]
-
-    cols = st.columns(2)
-
-    for i, rate in enumerate(RATES):
-
+    for rate in RATES:
         if mode == "Выделить НДС из суммы":
-            vat = amount * Decimal(rate) / (Decimal(100) + Decimal(rate))
+            vat = amount * Decimal(rate) / (Decimal(100)+Decimal(rate))
         else:
             vat = amount * Decimal(rate) / Decimal(100)
 
         vat = vat.quantize(Decimal("0.01"))
 
         result = f"НДС {rate}%:\n{money_to_text(vat)}"
-        all_results.append(result)
+        total.append(result)
 
-        with cols[i % 2]:
+        with st.container():
             st.info(result)
+            copy_button(result, str(rate))
 
-    st.markdown("## 📋 Полный результат")
+    full = "\n\n".join(total)
 
-    final = "\n\n".join(all_results)
-
-    st.text_area(
-        "Можно скопировать полностью",
-        final,
-        height=220
-    )
+    st.subheader("📋 Полный расчёт")
+    st.text_area(" ", full, height=220)
+    copy_button(full, "all")
