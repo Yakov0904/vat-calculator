@@ -1,0 +1,16 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # Запуск каждые 3 дня в 09:00 UTC
+    - cron: '0 9 */3 * *'
+  workflow_dispatch: # Позволяет запускать проверку вручную
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit App
+        run: |
+          curl -s -L "https://vat-calculator-mgt.streamlit.app/" > /dev/null
+          echo "Пинг успешно отправлен!"
