@@ -4,7 +4,7 @@ on:
   schedule:
     # Запуск каждые 3 дня в 09:00 UTC
     - cron: '0 9 */3 * *'
-  workflow_dispatch: # Позволяет запускать проверку вручную
+  workflow_dispatch:
 
 jobs:
   ping-app:
@@ -12,5 +12,5 @@ jobs:
     steps:
       - name: Ping Streamlit App
         run: |
-          curl -s -L "https://vat-calculator-mgt.streamlit.app/" > /dev/null
+          curl -s -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://vat-calculator-mgt.streamlit.app/" --max-redirs 10 > /dev/null || true
           echo "Пинг успешно отправлен!"
