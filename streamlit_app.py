@@ -1,237 +1,173 @@
 import streamlit as st
+from num2words import num2words
+import base64
 import streamlit.components.v1 as components
-from decimal import Decimal, ROUND_HALF_UP
-import re
 
+# --- НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(
     page_title="Калькулятор НДС Онлайн",
-    page_icon="💰",
+    page_icon="🧾",
     layout="centered"
 )
 
-# ---------- СТИЛЬ ----------
-st.markdown("""
-<style>
-.block-container {
-    max-width: 900px;
-    padding-top: 2rem;
-}
-h1 {
-    text-align: center;
-}
-.card {
-    padding: 18px;
-    border-radius: 16px;
-    border: 1px solid #dddddd;
-    margin: 10px 0;
-}
-.result {
-    font-size: 18px;
-    line-height: 1.5;
-}
-</style>
-""", unsafe_allow_html=True)
+# --- ФУНКЦИИ ---
+def get_rubles_kopecks_text(amount):
+    """Преобразует число в строку формата: 9 371 (Девять тысяч ...) рубль 51 копейка"""
+    # Округляем и разбиваем на рубли и копейки
+    amount_str = f"{amount:.2f}"
+    rubles_str, kopecks_str = amount_str.split('.')
+    rubles = int(rubles_str)
+    kopecks = int(kopecks_str)
 
-
-# ---------- ЛОГИКА ----------
-
-UNITS_MALE = ["", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]
-UNITS_FEMALE = ["", "одна", "две", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]
-TEENS = ["десять", "одиннадцать", "двенадцать", "тринадцать", "четырнадцать",
-         "пятнадцать", "шестнадцать", "семнадцать", "восемнадцать", "девятнадцать"]
-TENS = ["", "", "двадцать", "тридцать", "сорок", "пятьдесят",
-        "шестьдесят", "семьдесят", "восемьдесят", "девяносто"]
-HUNDREDS = ["", "сто", "двести", "триста", "четыреста", "пятьсот",
-            "шестьсот", "семьсот", "восемьсот", "девятьсот"]
-
-SCALES = [
-    ("", "", "", False),
-    ("тысяча", "тысячи", "тысяч", True),
-    ("миллион", "миллиона", "миллионов", False),
-    ("миллиард", "миллиарда", "миллиардов", False)
-]
-
-RATES = [22, 10, 7, 5]
-
-
-def plural_form(n, forms):
-    n = abs(n) % 100
-    if 11 <= n <= 19:
-        return forms[2]
-    n %= 10
-    if n == 1:
-        return forms[0]
-    if 2 <= n <= 4:
-        return forms[1]
-    return forms[2]
-
-
-def triad_to_words(n, female=False):
-    words = []
-    h = n // 100
-    rest = n % 100
-
-    if h:
-        words.append(HUNDREDS[h])
-
-    if 10 <= rest <= 19:
-        words.append(TEENS[rest - 10])
+    # Правила склонения для рублей
+    if rubles % 10 == 1 and rubles % 100 != 11:
+        r_word = "рубль"
+    elif 2 <= rubles % 10 <= 4 and not (12 <= rubles % 100 <= 14):
+        r_word = "рубля"
     else:
-        if rest // 10:
-            words.append(TENS[rest // 10])
-        if rest % 10:
-            words.append((UNITS_FEMALE if female else UNITS_MALE)[rest % 10])
+        r_word = "рублей"
 
-    return " ".join(words)
+    # Правила склонения для копеек
+    if kopecks % 10 == 1 and kopecks % 100 != 11:
+        k_word = "копейка"
+    elif 2 <= kopecks % 10 <= 4 and not (12 <= kopecks % 100 <= 14):
+        k_word = "копейки"
+    else:
+        k_word = "копеек"
 
+    # Получаем прописное значение
+    if rubles == 0:
+        r_text = "Ноль"
+    else:
+        r_text = num2words(rubles, lang='ru').capitalize()
 
-def integer_to_words(n):
-    if n == 0:
-        return "ноль"
+    # Форматируем число с пробелами (9 371)
+    formatted_rubles = f"{rubles:,}".replace(',', ' ')
+    
+    return f"{formatted_rubles} ({r_text}) {r_word} {kopecks:02d} {k_word}"
 
-    parts = []
-    index = 0
-
-    while n:
-        triad = n % 1000
-        if triad:
-            one, few, many, female = SCALES[index]
-            txt = triad_to_words(triad, female)
-            if index:
-                txt += " " + plural_form(triad, (one, few, many))
-            parts.append(txt)
-
-        n //= 1000
-        index += 1
-
-    return " ".join(reversed(parts))
-
-
-def money_to_text(amount):
-    amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    rub = int(amount)
-    kop = int((amount - Decimal(rub)) * 100)
-
-    return (
-        f"{rub:,}".replace(",", " ")
-        + f" ({integer_to_words(rub).capitalize()}) "
-        + plural_form(rub, ("рубль", "рубля", "рублей"))
-        + f" {kop:02d} "
-        + plural_form(kop, ("копейка", "копейки", "копеек"))
-    )
-
-
-def parse_amount(value):
-    value = value.replace(" ", "").replace(",", ".")
-    if not re.fullmatch(r"\d+(\.\d+)?", value):
-        raise ValueError
-    return Decimal(value)
-
-
-def copy_button(text, key):
-    import base64
-
-    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
-
-    components.html(
-        f"""
-        <html>
-        <body style="margin:0;">
-        <button id="copy_{key}"
-        style="
-        width:130px;
-        height:38px;
-        padding:5px 10px;
-        border-radius:8px;
-        border:1px solid #888;
-        background:white;
-        cursor:pointer;
-        font-size:14px;">
-        📋 Копировать
+def generate_copy_button(text_to_copy):
+    """Создает HTML/JS кнопку для надежного копирования в буфер обмена браузера"""
+    # Кодируем текст в base64, чтобы избежать ошибок с переносами строк и кавычками в JS
+    b64_text = base64.b64encode(text_to_copy.encode('utf-8')).decode('utf-8')
+    
+    html_code = f"""
+    <div style="display: flex; justify-content: center; margin-top: 10px;">
+        <button id="copy-btn" onclick="copyToClipboard()" style="
+            background-color: #FF4B4B;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-family: sans-serif;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        ">
+            📋 Скопировать полный расчёт
         </button>
+    </div>
 
-        <script>
-        const btn = document.getElementById("copy_{key}");
+    <script>
+    function copyToClipboard() {{
+        // Декодируем текст из base64
+        const text = decodeURIComponent(escape(window.atob('{b64_text}')));
+        
+        navigator.clipboard.writeText(text).then(function() {{
+            const btn = document.getElementById('copy-btn');
+            btn.innerText = '✅ Скопировано!';
+            btn.style.backgroundColor = '#28a745';
+            
+            setTimeout(function() {{
+                btn.innerText = '📋 Скопировать полный расчёт';
+                btn.style.backgroundColor = '#FF4B4B';
+            }}, 2500);
+        }}).catch(function(err) {{
+            console.error('Ошибка копирования: ', err);
+        }});
+    }}
+    </script>
+    """
+    components.html(html_code, height=60)
 
-        btn.onclick = async function() {{
-            const text = decodeURIComponent(escape(atob("{encoded}")));
+# --- ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
+st.title("🧾 Калькулятор НДС")
+st.markdown("Быстрый расчет налога на добавленную стоимость с генерацией суммы прописью.")
 
-            try {{
-                await navigator.clipboard.writeText(text);
-            }} catch(e) {{
-                const area = document.createElement("textarea");
-                area.value = text;
-                document.body.appendChild(area);
-                area.select();
-                document.execCommand("copy");
-                area.remove();
-            }}
+# Блок ввода данных
+with st.container():
+    st.subheader("Параметры расчёта")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Разрешаем ввод текста для удобства (пользователи часто копируют суммы с пробелами)
+        amount_input = st.text_input("Введите сумму (₽):", value="10000")
+        try:
+            # Очищаем строку от пробелов и меняем запятую на точку
+            amount = float(amount_input.replace(' ', '').replace(',', '.'))
+        except ValueError:
+            st.error("Пожалуйста, введите корректное число.")
+            amount = 0.0
 
-            btn.innerHTML = "✅ Скопировано";
-            setTimeout(() => btn.innerHTML="📋 Копировать", 1500);
-        }};
-        </script>
-        </body>
-        </html>
-        """,
-        height=45,
+    with col2:
+        rate = st.selectbox("Ставка НДС:", [22, 10, 7, 5], format_func=lambda x: f"{x}%")
+
+    mode = st.radio(
+        "Режим расчёта:",
+        options=["Начислить НДС (сумма без НДС)", "Выделить НДС (сумма с НДС)"],
+        horizontal=True
     )
 
+# --- МАТЕМАТИКА ---
+if amount > 0:
+    if mode == "Начислить НДС (сумма без НДС)":
+        base_amount = amount
+        vat_amount = amount * (rate / 100)
+        total_amount = amount + vat_amount
+        mode_title_base = "Сумма без НДС"
+        mode_title_total = "Итоговая сумма (с НДС)"
+    else:
+        total_amount = amount
+        vat_amount = amount * rate / (100 + rate)
+        base_amount = total_amount - vat_amount
+        mode_title_base = "Сумма без НДС"
+        mode_title_total = "Исходная сумма (с НДС)"
 
-# ---------- ИНТЕРФЕЙС ----------
+    # --- ВЫВОД РЕЗУЛЬТАТОВ ---
+    st.divider()
+    st.subheader("Результаты")
+    
+    m_col1, m_col2, m_col3 = st.columns(3)
+    m_col1.metric(mode_title_base, f"{base_amount:,.2f} ₽".replace(',', ' '))
+    m_col2.metric("Сумма НДС", f"{vat_amount:,.2f} ₽".replace(',', ' '))
+    m_col3.metric(mode_title_total, f"{total_amount:,.2f} ₽".replace(',', ' '))
 
-st.title("💰 Калькулятор НДС Онлайн")
-st.caption("Бесплатный сервис расчёта НДС с суммой прописью")
+    # Генерация прописных строк
+    base_text = get_rubles_kopecks_text(base_amount)
+    vat_text = get_rubles_kopecks_text(vat_amount)
+    total_text = get_rubles_kopecks_text(total_amount)
 
-amount_input = st.text_input(
-    "Введите сумму",
-    placeholder="Например: 100000,50"
-)
+    st.markdown("##### Суммы прописью:")
+    st.info(f"**Сумма без НДС:** {base_text}\n\n**НДС ({rate}%):** {vat_text}\n\n**Сумма с НДС:** {total_text}")
 
-mode = st.radio(
-    "Режим расчёта",
-    ["Начислить НДС", "Выделить НДС из суммы"],
-    horizontal=True
-)
+    # --- БЛОК ПОЛНОГО РАСЧЕТА ---
+    st.divider()
+    st.subheader("Полный расчёт для копирования")
+    
+    full_report = (
+        f"--- Детализация НДС ---\n"
+        f"Ставка НДС: {rate}%\n"
+        f"Сумма без НДС: {base_text}\n"
+        f"Сумма НДС: {vat_text}\n"
+        f"Итоговая сумма с НДС: {total_text}\n"
+    )
+    
+    st.text_area("Текст расчёта (можно отредактировать):", value=full_report, height=150)
+    
+    # Кнопка копирования
+    generate_copy_button(full_report)
 
-if st.button("🧮 Рассчитать", use_container_width=True):
-
-    try:
-        amount = parse_amount(amount_input)
-    except:
-        st.error("Введите корректную сумму")
-        st.stop()
-
-    amount = amount.quantize(Decimal("0.01"))
-
-    source = f"Исходная сумма:\n{amount_input}\n{money_to_text(amount)}"
-
-    st.subheader("📄 Исходная сумма")
-    st.text_area(" ", source, height=90)
-    copy_button(source, "source")
-
-    st.subheader("📊 Результаты")
-
-    total = [source]
-
-    for rate in RATES:
-        if mode == "Выделить НДС из суммы":
-            vat = amount * Decimal(rate) / (Decimal(100)+Decimal(rate))
-        else:
-            vat = amount * Decimal(rate) / Decimal(100)
-
-        vat = vat.quantize(Decimal("0.01"))
-
-        result = f"НДС {rate}%:\n{money_to_text(vat)}"
-        total.append(result)
-
-        with st.container():
-            st.info(result)
-            copy_button(result, str(rate))
-
-    full = "\n\n".join(total)
-
-    st.subheader("📋 Полный расчёт")
-    st.text_area(" ", full, height=220)
-    copy_button(full, "all")
+else:
+    st.info("Введите сумму больше нуля для начала расчёта.")
