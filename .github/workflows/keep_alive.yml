@@ -2,8 +2,8 @@ name: Keep Streamlit App Alive
 
 on:
   schedule:
-    # Запуск каждые 12 часов
-    - cron: '0 */12 * * *'
+    # Запуск в 07:00 и 19:00 UTC (10:00 и 22:00 по Москве)
+    - cron: '0 7,19 * * *'
   workflow_dispatch:
 
 jobs:
