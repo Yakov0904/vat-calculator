@@ -10,7 +10,40 @@ jobs:
   ping-app:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Streamlit App
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
         run: |
-          curl -s -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" "https://vat-calculator-mgt.streamlit.app/" --max-redirs 10 > /dev/null || true
-          echo "Пинг успешно отправлен!"
+          npm install playwright
+          npx playwright install chromium --with-deps
+
+      - name: Run Headless Browser Ping
+        run: |
+          node -e '
+          const { chromium } = require("playwright");
+          (async () => {
+            console.log("Запускаем браузер...");
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            
+            console.log("Открываем приложение...");
+            await page.goto("https://vat-calculator-mgt.streamlit.app/", { waitUntil: "networkidle", timeout: 60000 });
+
+            // Проверяем, есть ли кнопка буждения (если сайт заснул)
+            const wakeButton = page.locator("button:has-text(\"Wake it up\"), button:has-text(\"Yes, wake it up\")");
+            if (await wakeButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+              console.log("Приложение спало. Нажимаем кнопку Wake it up...");
+              await wakeButton.click();
+              await page.waitForTimeout(15000); // Ждём, пока сервер поднимется
+            } else {
+              console.log("Приложение уже работает!");
+            }
+
+            await page.waitForTimeout(5000);
+            await browser.close();
+            console.log("Пинг через браузер успешно завершён!");
+          })();
+          '
